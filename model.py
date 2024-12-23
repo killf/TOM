@@ -103,7 +103,7 @@ class DecoderLayer(nn.Module):
 
 
 class Transformer(nn.Module):
-    def __init__(self, vocab_size: int, embed_dim: int, num_head: int, n_layers: int, dropout: float=0., norm_eps: float=1e-4):
+    def __init__(self, vocab_size: int, embed_dim: int, num_head: int, n_layers: int, dropout: float=0.1, norm_eps: float=1e-4):
         super().__init__()
         
         self.embedding = nn.Embedding(vocab_size, embed_dim)
@@ -165,7 +165,3 @@ if __name__ == "__main__":
     print(y1.shape)
     print(y1[0, 7])
     print(y1[0, 7] == y2[0, 7])
-    
-
-        
-    
