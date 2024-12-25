@@ -40,4 +40,4 @@ if __name__ == "__main__":
     parser.add_argument("--model-file", type=str, default="output/model.pt")
     args = parser.parse_args()
     
-    Sampler(args).sample("从前")
+    Sampler(args).sample("一天")

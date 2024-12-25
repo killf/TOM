@@ -3,6 +3,7 @@ from accelerate import Accelerator
 import torch
 import os
 
+from utils import Counter, Timer, calculate_eta
 from dataset import TOMDataset, collate_fn
 from tokenizer import Tokenizer
 from model import Transformer
@@ -22,7 +23,7 @@ class Trainer:
         self.model = Transformer(self.tokenizer.size, 1024, 8, 8).to(self.device)        
         self.optimizer = torch.optim.AdamW(self.model.parameters(), args.lr)
         
-        if args.model_file:
+        if args.model_file and os.path.exists(args.model_file):
             self.model.load_state_dict(torch.load(args.model_file, weights_only=True))
 
         self.model, self.optimizer, self.train_loader = self.accelerator.prepare(self.model, self.optimizer, self.train_loader)
@@ -40,9 +41,11 @@ class Trainer:
         
     def train_epoch(self, epoch):
         self.model.train()
-        losses = []
+        
+        timer, counter = Timer(), Counter()        
         for step, token in enumerate(self.train_loader):
             token = token.to(self.device)
+            reader_time = timer.elapsed_time()
             
             x, y = token[:, :-1], token[:, 1:]
             p, loss = self.model(x, y)
@@ -52,8 +55,20 @@ class Trainer:
             self.optimizer.step()
             
             if self.accelerator.is_main_process:
-                losses.append(float(loss))
-                print(f"[{epoch}] [step={step}] loss={float(loss):.4f}/{sum(losses)/len(losses):.4f}", end="\r", flush=True)
+                loss = float(loss)            
+                batch_time = timer.elapsed_time()
+                counter.append(loss=loss, reader_time=reader_time, batch_time=batch_time)
+                eta = calculate_eta(len(self.train_loader) - step, counter.batch_time)
+            
+                print(f"[epoch={epoch + 1}/{self.args.epochs}] "
+                  f"step={step + 1}/{len(self.train_loader)} "
+                  f"loss={loss:.4f}/{counter.loss:.4f} "
+                  f"batch_time={counter.batch_time:.4f} "
+                  f"reader_time={counter.reader_time:.4f} "
+                  f"| ETA {eta}",
+                  end="\r",
+                  flush=True)
+                timer.restart()
 
     
 if __name__ == "__main__":

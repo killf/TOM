@@ -26,14 +26,16 @@ class Tokenizer:
         return "".join([self.vocab_idx[idx] for idx in tokens if idx in self.vocab_idx])
     
 
-def train(data_file: str, model_file: str=None):
-    data = json.load(open(data_file, encoding="utf8"))
-    vocab = set()
-    for line in data:
-        for char in line["text"]:
-            vocab.add(char)
+def train(data_file_list: List[str], model_file: str=None):
+    for data_file in isinstance(data_file_list, list) and data_file_list or [data_file_list]:
+        data = json.load(open(data_file, encoding="utf8"))
+        vocab = set()
+        for line in data:
+            for char in line["text"]:
+                vocab.add(char)
 
     vocab = list(vocab)
+    vocab.sort()
     if model_file:
         json.dump(vocab, open(model_file, "w", encoding="utf8"), ensure_ascii=False, indent=2)
     return vocab
@@ -43,7 +45,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(prog='Tokenizer', description='Train a tokenizer')
-    parser.add_argument("-i", "--data-file", type=str, default="data/data.json")
+    parser.add_argument("-i", "--data-file", type=str, default="data/data.json", nargs="+")
     parser.add_argument("-o", "--vocab-file", type=str, default="data/vocab.json")
     args = parser.parse_args()
     
