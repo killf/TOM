@@ -1,14 +1,58 @@
 from typing import List
+from enum import Enum
 import json
+
+
+class SPECIAL_TOKEN(Enum):
+    PAD = 0
+    BOS = 1
+    EOS = 2
+
+    SYSTEM_START = 3
+    SYSTEM_END = 4
+    USER_START = 5
+    USER_END = 6
+    ASSISTANT_START = 7
+    ASSISTANT_END = 8
+
+    FUNCTION_START = 9
+    FUNCTION_ARGS = 10
+    FUNCTION_RETURN = 11
+    FUNCTION_END = 12
+
+    ACTION_START = 13
+    ACTION_ARGS = 14
+    ACTION_END = 15
+
+    THINK_START = 16
+    THINK_STEP = 17
+    THINK_REASONING = 18
+    THINK_CONCLUSION = 19
+    THINK_END = 20
+
+    IMAGE_1 = 21
+    IMAGE_2 = 22
+    IMAGE_3 = 23
+    IMAGE_4 = 24
+    IMAGE_5 = 25
+    IMAGE_6 = 26
+    IMAGE_7 = 27
+    IMAGE_8 = 28
+
+    IMAGE_START = 29
+    IMAGE_END = 30
+
+    DIFFUSION_START = 31
+    DIFFUSION_ARGS = 32
+    DIFFUSION_END = 32
 
 
 class Tokenizer:
     def __init__(self, model_file: str):
-        self.pad_id, self.bos_id, self.eos_id = 0, 1, 2
         vocab = json.load(open(model_file, encoding="utf8"))
-        self.vocab = {char: idx + 3 for idx, char in enumerate(vocab)}
+        self.vocab = {char: idx + 100 for idx, char in enumerate(vocab)}
         self.vocab_idx = {idx: char for char, idx in self.vocab.items()}
-        self.size = len(self.vocab) + 3
+        self.size = len(self.vocab) + 100
         
     def encode(self, text: str, bos: bool=False, eos: bool=False) -> List[int]:
         tokens = [self.vocab[char] for char in text]
