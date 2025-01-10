@@ -86,4 +86,3 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     Trainer(args).train()
-    # accelerate launch train.py
