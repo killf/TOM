@@ -75,7 +75,7 @@ if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(prog='Trainer', description='Trainer')
-    parser.add_argument("--data-file", type=str, default="data/data.json")
+    parser.add_argument("--data-file", type=str, default="data/data.jsonl")
     parser.add_argument("--vocab-file", type=str, default="data/vocab.json")
     parser.add_argument("--model-file", type=str, default="output/model.pt")
     parser.add_argument("--epochs", type=int, default=1000)

@@ -4,7 +4,8 @@ import json
 
 class TOMDataset(Dataset):
     def __init__(self, data_file: str, tokenizer = None):
-        self.data = json.load(open(data_file, encoding="utf8"))
+        lines = open(data_file, encoding="utf8").read().split("\n")
+        self.data = [json.loads(txt) for txt in lines]
         if tokenizer is not None:
             for item in self.data:
                 item["token"] = tokenizer.encode(item["text"], True, True)
