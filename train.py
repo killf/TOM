@@ -79,8 +79,8 @@ if __name__ == "__main__":
     parser.add_argument("--vocab-file", type=str, default="data/vocab.json")
     parser.add_argument("--model-file", type=str, default="output/model.pt")
     parser.add_argument("--epochs", type=int, default=200)
-    parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--batch-size", type=int, default=1)
+    parser.add_argument("--lr", type=float, default=5e-5)
     parser.add_argument("--outdir", type=str, default="output")
 
     args = parser.parse_args()

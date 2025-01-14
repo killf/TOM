@@ -1,7 +1,7 @@
 import torch
 import os
 
-from tokenizer import Tokenizer
+from tokenizer import Tokenizer, SPECIAL_TOKEN
 from model import Transformer
 
 class Sampler:
@@ -27,7 +27,7 @@ class Sampler:
             print(self.tokenizer.decode([t]), end="", flush=True)
             tokens.append(t)            
 
-            if t in [self.tokenizer.eos_id, self.tokenizer.pad_id]:
+            if t in [SPECIAL_TOKEN.EOS, SPECIAL_TOKEN.PAD]:
                 break
         print()
 
