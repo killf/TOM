@@ -1,27 +1,7 @@
+from torchtune.modules import RotaryPositionalEmbeddings
 from torch.nn import functional as F
 from torch import nn
 import torch
-import math
-
-
-def RoPE(x: torch.Tensor, offset: int = 0):
-    """
-    旋转位置编码
-    x: (batch_size, seq_len, embed_dim)
-    """
-    _, seq_len, embed_dim  = x.size()
-    
-    freqs = 1.0 / (10000 ** (torch.arange(0, embed_dim, 2, dtype=torch.float32, device=x.device, requires_grad=False) / embed_dim))
-    t = torch.arange(seq_len, dtype=torch.float32, device=x.device, requires_grad=False) + offset
-    
-    freqs = torch.outer(t, freqs)
-    freqs_cos, freqs_sin = torch.cos(freqs), torch.sin(freqs)
-    
-    x_r, x_i = x.reshape(x.shape[:-1] + (-1, 2)).unbind(-1)
-    out_r = x_r * freqs_cos - x_i * freqs_sin
-    out_i = x_r * freqs_sin + x_i * freqs_cos
-    
-    return torch.stack([out_r, out_i], dim=-1).flatten(-2)
 
 
 class MultiHeadAttention(nn.Module):
@@ -34,6 +14,7 @@ class MultiHeadAttention(nn.Module):
         self.head_dim = head_dim
 
         self.w = nn.Linear(embed_dim, embed_dim * 3, bias=False)
+        self.rope = RotaryPositionalEmbeddings(self.head_dim, 1024 * 16)
 
         self.fc = nn.Linear(embed_dim, embed_dim)
     
@@ -45,15 +26,13 @@ class MultiHeadAttention(nn.Module):
 
         q, k, v = self.w(x).chunk(3, dim=-1)
         
-        q = q.reshape(batch_size, seq_len, self.num_head, self.head_dim).permute(0, 2, 1, 3)
-        k = k.reshape(batch_size, seq_len, self.num_head, self.head_dim).permute(0, 2, 1, 3)
-        v = v.reshape(batch_size, seq_len, self.num_head, self.head_dim).permute(0, 2, 1, 3)
+        q = q.reshape(batch_size, seq_len, self.num_head, self.head_dim)
+        k = k.reshape(batch_size, seq_len, self.num_head, self.head_dim)
+        v = v.reshape(batch_size, seq_len, self.num_head, self.head_dim)
 
-        q = q.reshape(batch_size * self.num_head, seq_len, self.head_dim)
-        k = k.reshape(batch_size * self.num_head, seq_len, self.head_dim)
-        q, k = RoPE(q), RoPE(k)
-        q = q.reshape(batch_size, self.num_head, seq_len, self.head_dim)
-        k = k.reshape(batch_size, self.num_head, seq_len, self.head_dim)
+        q = self.rope(q).permute(0, 2, 1, 3)
+        k = self.rope(k).permute(0, 2, 1, 3)
+        v = v.permute(0, 2, 1, 3)
 
         x = F.scaled_dot_product_attention(q, k, v, attn_mask=padding_mask)
         x = x.permute(0, 2, 1, 3).reshape(batch_size, seq_len, embed_dim)
