@@ -17,16 +17,31 @@ class TOMDataset(Dataset):
         item = self.data[index]
         return item
 
+
+def filter_by_max_tokens(data, max_tokens):
+    while len(data) > 1:
+        max_len = 0
+        for token in data:
+            max_len = max(max_len, len(token))
+
+        if max_len * len(data) > max_tokens:
+            data.pop(-1)
+        else:
+            return data
+    return data
+
+
 def collate_fn(data):
+    data = filter_by_max_tokens([item["token"] for item in data], 1024 * 12)
+
     result, max_len = [], 0
-    for item in data:
-        token = item["token"]
+    for token in data:
         result.append(token)
         max_len = max(max_len, len(token))
     
-    for item in result:
-        if max_len > len(item):
-            item.extend([0] * (max_len - len(item)))
+    for token in result:
+        if max_len > len(token):
+            token.extend([0] * (max_len - len(token)))
     
     return torch.tensor(result, dtype=torch.int64)
 

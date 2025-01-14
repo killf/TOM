@@ -78,7 +78,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-file", type=str, default="data/data.jsonl")
     parser.add_argument("--vocab-file", type=str, default="data/vocab.json")
     parser.add_argument("--model-file", type=str, default="output/model.pt")
-    parser.add_argument("--epochs", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--outdir", type=str, default="output")

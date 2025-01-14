@@ -3,7 +3,7 @@ from enum import Enum
 import json
 
 
-class SPECIAL_TOKEN(Enum):
+class SPECIAL_TOKEN:
     PAD = 0
     BOS = 1
     EOS = 2
