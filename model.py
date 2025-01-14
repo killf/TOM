@@ -24,46 +24,40 @@ def RoPE(x: torch.Tensor, offset: int = 0):
     return torch.stack([out_r, out_i], dim=-1).flatten(-2)
 
 
-class AttentionHead(nn.Module):
-    def __init__(self, embed_dim, head_dim):
-        super().__init__()
-        
-        self.q = nn.Linear(embed_dim, head_dim, bias=False)
-        self.k = nn.Linear(embed_dim, head_dim, bias=False)
-        self.v = nn.Linear(embed_dim, head_dim, bias=False)
-    
-    def forward(self, x: torch.Tensor, padding_mask: torch.Tensor):
-        """
-        x: (batch_size, seq_len, embed_dim)
-        """
-        q, k, v = self.q(x), self.k(x), self.v(x)
-       
-        q, k = RoPE(q), RoPE(k)
-        score = torch.bmm(q, k.transpose(1, 2)) / math.sqrt(k.size(-1))
-                
-        mask = torch.tril(torch.ones_like(score)) == 0
-        score = score.masked_fill(mask, - torch.inf)
-
-        weight = torch.softmax(score, -1)
-        weight = weight.masked_fill(padding_mask, 0)        
-        return torch.bmm(weight, v)
-        
-
 class MultiHeadAttention(nn.Module):
     def __init__(self, embed_dim, num_head):
         super().__init__()
         
         head_dim = embed_dim // num_head
         assert embed_dim == head_dim * num_head
-        
-        self.heads = nn.ModuleList(AttentionHead(embed_dim, head_dim) for _ in range(num_head))
+        self.num_head = num_head
+        self.head_dim = head_dim
+
+        self.w = nn.Linear(embed_dim, embed_dim * 3, bias=False)
+
         self.fc = nn.Linear(embed_dim, embed_dim)
     
     def forward(self, x: torch.Tensor, padding_mask: torch.Tensor):
         """
         x: (batch_size, seq_len, embed_dim)
         """
-        x = torch.cat([head(x, padding_mask) for head in self.heads], dim=-1)
+        batch_size, seq_len, embed_dim = x.size()
+
+        q, k, v = self.w(x).chunk(3, dim=-1)
+        
+        q = q.reshape(batch_size, seq_len, self.num_head, self.head_dim).permute(0, 2, 1, 3)
+        k = k.reshape(batch_size, seq_len, self.num_head, self.head_dim).permute(0, 2, 1, 3)
+        v = v.reshape(batch_size, seq_len, self.num_head, self.head_dim).permute(0, 2, 1, 3)
+
+        q = q.reshape(batch_size * self.num_head, seq_len, self.head_dim)
+        k = k.reshape(batch_size * self.num_head, seq_len, self.head_dim)
+        q, k = RoPE(q), RoPE(k)
+        q = q.reshape(batch_size, self.num_head, seq_len, self.head_dim)
+        k = k.reshape(batch_size, self.num_head, seq_len, self.head_dim)
+
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=padding_mask)
+        x = x.permute(0, 2, 1, 3).reshape(batch_size, seq_len, embed_dim)
+
         return self.fc(x)
 
 
@@ -146,7 +140,12 @@ def get_padding_mask(mask):
     _, seq_len = mask.shape
     p1 = mask.unsqueeze(-1).repeat(1, 1, seq_len)
     p2 = mask.unsqueeze(-2).repeat(1, seq_len, 1)
-    return torch.logical_or(p1, p2)
+    mask1 = torch.logical_or(p1, p2)
+
+    mask2 = torch.tril(torch.ones_like(mask1)) == 0
+    
+    mask = torch.logical_or(mask1, mask2)
+    return mask.logical_not().unsqueeze(1)
     
 
 if __name__ == "__main__":
@@ -159,9 +158,10 @@ if __name__ == "__main__":
     x = torch.rand((2, 10, 64))
     m = torch.tensor([[False] * 5 + [True] * 5, [False] * 7 + [True] * 3], dtype=torch.bool)
     
-    net = AttentionHead(64, 8)
+    net = MultiHeadAttention(64, 8)
     y1 = net(x, get_padding_mask(m))
     y2 = net(x[:, :8, :], get_padding_mask(m[:, :8]))
     print(y1.shape)
-    print(y1[0, 7])
-    print(y1[0, 7] == y2[0, 7])
+    print(y2.shape)
+    print(y1[0, 3])
+    print(y1[0, 3] == y2[0, 3])
