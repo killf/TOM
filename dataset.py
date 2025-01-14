@@ -14,8 +14,7 @@ class TOMDataset(Dataset):
         return len(self.data)
     
     def __getitem__(self, index):
-        item = self.data[index]
-        return item
+        return self.data[index]
 
 
 def filter_by_max_tokens(data, max_tokens):
@@ -32,7 +31,7 @@ def filter_by_max_tokens(data, max_tokens):
 
 
 def collate_fn(data):
-    # data = filter_by_max_tokens([item for item in data], 1024 * 4)
+    data = filter_by_max_tokens([item for item in data], 1024 * 48)
 
     result, max_len = [], 0
     for item in data:

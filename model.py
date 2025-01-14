@@ -5,13 +5,15 @@ import torch
 
 
 class MultiHeadAttention(nn.Module):
-    def __init__(self, embed_dim, num_head):
+    def __init__(self, embed_dim, num_head, dropout=0):
         super().__init__()
         
         head_dim = embed_dim // num_head
         assert embed_dim == head_dim * num_head
         self.num_head = num_head
         self.head_dim = head_dim
+        
+        self.dropout = dropout
 
         self.w = nn.Linear(embed_dim, embed_dim * 3, bias=False)
         self.rope = RotaryPositionalEmbeddings(self.head_dim, 1024 * 16)
@@ -34,7 +36,7 @@ class MultiHeadAttention(nn.Module):
         k = self.rope(k).permute(0, 2, 1, 3)
         v = v.permute(0, 2, 1, 3)
 
-        x = F.scaled_dot_product_attention(q, k, v, attn_mask=padding_mask)
+        x = F.scaled_dot_product_attention(q, k, v, attn_mask=padding_mask, dropout_p=self.dropout)
         x = x.permute(0, 2, 1, 3).reshape(batch_size, seq_len, embed_dim)
 
         return self.fc(x)
@@ -61,7 +63,7 @@ class DecoderLayer(nn.Module):
     def __init__(self, embed_dim: int, num_head: int, dropout: float, norm_eps: float):
         super().__init__()
         
-        self.attention = MultiHeadAttention(embed_dim, num_head)
+        self.attention = MultiHeadAttention(embed_dim, num_head, dropout)
         self.feed_forward = MLP(embed_dim, embed_dim // 2, dropout)
         
         self.attention_norm = nn.RMSNorm(embed_dim, norm_eps)
