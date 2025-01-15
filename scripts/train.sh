@@ -1,1 +1,1 @@
-accelerate launch train.py
+accelerate launch train.py $@
