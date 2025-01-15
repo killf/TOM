@@ -31,7 +31,7 @@ def filter_by_max_tokens(data, max_tokens):
 
 
 def collate_fn(data):
-    data = filter_by_max_tokens([item for item in data], 1024 * 48)
+    data = filter_by_max_tokens([item for item in data], 1024 * 32)
 
     result, max_len = [], 0
     for item in data:

@@ -25,6 +25,9 @@ class Trainer:
         
         if args.model_file and os.path.exists(args.model_file):
             self.model.load_state_dict(torch.load(args.model_file, weights_only=True))
+        
+        if args.optimizer_file and os.path.exists(args.optimizer_file):
+            self.optimizer.load_state_dict(torch.load(args.optimizer_file, weights_only=True))
 
         self.model, self.optimizer, self.train_loader = self.accelerator.prepare(self.model, self.optimizer, self.train_loader)
         
@@ -36,8 +39,12 @@ class Trainer:
             if self.accelerator.is_main_process:
                 print()
                 os.makedirs(self.args.outdir, exist_ok=True)
+                
                 model = self.accelerator.unwrap_model(self.model)
-                torch.save(model.state_dict(), open(os.path.join(self.args.outdir, f"model.pt"), "wb"))
+                torch.save(model.state_dict(), open(os.path.join(self.args.outdir, "model.pt"), "wb"))
+
+                optimizer = self.accelerator.unwrap_model(self.optimizer)
+                torch.save(optimizer.state_dict(), open(os.path.join(self.args.outdir, "optimizer.pt"), "wb"))
         
     def train_epoch(self, epoch):
         self.model.train()
@@ -78,6 +85,7 @@ if __name__ == "__main__":
     parser.add_argument("--data-file", type=str, default="data/data.jsonl")
     parser.add_argument("--vocab-file", type=str, default="data/vocab.json")
     parser.add_argument("--model-file", type=str, default="output/model.pt")
+    parser.add_argument("--optimizer-file", type=str, default="output/optimizer.pt")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=1e-4)
