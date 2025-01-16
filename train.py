@@ -1,3 +1,4 @@
+from torch.optim.lr_scheduler import LinearLR
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 import torch
@@ -22,14 +23,12 @@ class Trainer:
         
         self.model = Transformer(self.tokenizer.size, 1024, 8, 8).to(self.device)        
         self.optimizer = torch.optim.AdamW(self.model.parameters(), args.lr)
-        
+        self.scheduler = LinearLR(self.optimizer, 0.01, 1, 1000)
+
         if args.model_file and os.path.exists(args.model_file):
             self.model.load_state_dict(torch.load(args.model_file, weights_only=True))
         
-        if args.optimizer_file and os.path.exists(args.optimizer_file):
-            self.optimizer.load_state_dict(torch.load(args.optimizer_file, weights_only=True))
-
-        self.model, self.optimizer, self.train_loader = self.accelerator.prepare(self.model, self.optimizer, self.train_loader)
+        self.model, self.optimizer, self.scheduler, self.train_loader = self.accelerator.prepare(self.model, self.optimizer, self.scheduler, self.train_loader)
         
     def train(self):
         for epoch in range(self.args.epochs):
@@ -38,14 +37,10 @@ class Trainer:
             self.accelerator.wait_for_everyone()
             if self.accelerator.is_main_process:
                 print()
-                os.makedirs(self.args.outdir, exist_ok=True)
-                
+                os.makedirs(self.args.outdir, exist_ok=True)                
                 model = self.accelerator.unwrap_model(self.model)
                 torch.save(model.state_dict(), open(os.path.join(self.args.outdir, "model.pt"), "wb"))
 
-                optimizer = self.accelerator.unwrap_model(self.optimizer)
-                torch.save(optimizer.state_dict(), open(os.path.join(self.args.outdir, "optimizer.pt"), "wb"))
-        
     def train_epoch(self, epoch):
         self.model.train()
         
@@ -61,6 +56,8 @@ class Trainer:
             loss.backward()
             self.optimizer.step()
             
+            self.scheduler.step()
+
             if self.accelerator.is_main_process:
                 loss = float(loss)            
                 batch_time = timer.elapsed_time()
@@ -85,7 +82,6 @@ if __name__ == "__main__":
     parser.add_argument("--data-file", type=str, default="data/data.jsonl")
     parser.add_argument("--vocab-file", type=str, default="data/vocab.json")
     parser.add_argument("--model-file", type=str, default="output/model.pt")
-    parser.add_argument("--optimizer-file", type=str, default="output/optimizer.pt")
     parser.add_argument("--epochs", type=int, default=200)
     parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--lr", type=float, default=1e-4)
