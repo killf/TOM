@@ -129,7 +129,7 @@ def init_distributed_mode():
 # torchrun --nproc_per_node 2 1-pretrain.py
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TOM Pretraining")
-    parser.add_argument("--out_dir", type=str, default="output")
+    parser.add_argument("--out-dir", type=str, default="output")
     # 若要以最快速度实现zero则epochs设置为1轮；否则应当利用有限的数据训练2~6个epochs。
     parser.add_argument("--epochs", type=int, default=1)
     parser.add_argument("--batch-size", type=int, default=32)

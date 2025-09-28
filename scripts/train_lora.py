@@ -114,7 +114,7 @@ def init_distributed_mode():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TOM SFT with LoRA")
-    parser.add_argument("--out_dir", type=str, default="output")
+    parser.add_argument("--out-dir", type=str, default="output")
     parser.add_argument("--epochs", type=int, default=10)
     parser.add_argument("--batch_size", type=int, default=32)
     parser.add_argument("--learning_rate", type=float, default=1e-4)
