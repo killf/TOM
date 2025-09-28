@@ -173,7 +173,7 @@ if __name__ == "__main__":
     ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
     ddp_local_rank, DEVICE = 0, "cuda:0"
 
-    base_seed = 1337
+    base_seed = 2025
     torch.manual_seed(base_seed)
     torch.cuda.manual_seed(base_seed)
 
