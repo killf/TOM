@@ -173,3 +173,4 @@ output
 test
 
 dataset/*.jsonl
+wandb

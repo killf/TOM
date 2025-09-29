@@ -1,8 +1,5 @@
-from torch.utils.data import DataLoader, DistributedSampler
-from torch.nn.parallel import DistributedDataParallel
+from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
-from contextlib import nullcontext
-import torch.distributed as dist
 from torch import optim, nn
 import argparse
 import warnings
@@ -18,11 +15,6 @@ from model.model_base import TOMConfig, TOMForCausalLM
 from dataset import SFTDataset
 
 warnings.filterwarnings("ignore")
-
-
-def Logger(content):
-    if not ddp or dist.get_rank() == 0:
-        print(content)
 
 
 def get_lr(current_step, total_steps, lr):
@@ -44,15 +36,14 @@ def train_epoch(epoch, wandb):
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
-        with ctx:
-            res = model(X)
-            loss = loss_fct(res.logits.view(-1, res.logits.size(-1)), Y.view(-1)).view(
-                Y.size()
-            )
+        res = model(X)
+        loss = loss_fct(res.logits.view(-1, res.logits.size(-1)), Y.view(-1)).view(
+            Y.size()
+        )
 
-            loss = (loss * loss_mask).sum() / loss_mask.sum()
-            loss += res.aux_loss
-            loss = loss / args.accumulation_steps
+        loss = (loss * loss_mask).sum() / loss_mask.sum()
+        loss += res.aux_loss
+        loss = loss / args.accumulation_steps
 
         scaler.scale(loss).backward()
 
@@ -67,7 +58,7 @@ def train_epoch(epoch, wandb):
 
         if step % args.log_interval == 0:
             spend_time = time.time() - start_time
-            Logger(
+            print(
                 "Epoch:[{}/{}]({}/{}) loss:{:.3f} lr:{:.12f} epoch_Time:{}min".format(
                     epoch + 1,
                     args.epochs,
@@ -79,7 +70,7 @@ def train_epoch(epoch, wandb):
                 )
             )
 
-            if (wandb is not None) and (not ddp or dist.get_rank() == 0):
+            if wandb is not None:
                 wandb.log(
                     {
                         "loss": loss * args.accumulation_steps,
@@ -89,7 +80,7 @@ def train_epoch(epoch, wandb):
                     }
                 )
 
-        if (step + 1) % args.save_interval == 0 and (not ddp or dist.get_rank() == 0):
+        if (step + 1) % args.save_interval == 0:
             model.eval()
             moe_path = "_moe" if lm_config.use_moe else ""
             ckp = f"{args.save_dir}/full_sft_{lm_config.hidden_size}{moe_path}.pth"
@@ -110,24 +101,11 @@ def init_model(lm_config):
     state_dict = torch.load(ckp, map_location=args.device)
     model.load_state_dict(state_dict, strict=False)
 
-    Logger(
+    print(
         f"LLM训练参数量: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.3f}M"
     )
     model = model.to(args.device)
     return model, tokenizer
-
-
-def init_distributed_mode():
-    if not ddp:
-        return
-    global ddp_local_rank, DEVICE
-
-    dist.init_process_group(backend="nccl")
-    ddp_rank = int(os.environ["RANK"])
-    ddp_local_rank = int(os.environ["LOCAL_RANK"])
-    ddp_world_size = int(os.environ["WORLD_SIZE"])
-    DEVICE = f"cuda:{ddp_local_rank}"
-    torch.cuda.set_device(DEVICE)
 
 
 if __name__ == "__main__":
@@ -143,13 +121,11 @@ if __name__ == "__main__":
     parser.add_argument("--use-wandb", action="store_true")
     parser.add_argument("--wandb-project", type=str, default="TOM-Full-SFT")
     parser.add_argument("--num-workers", type=int, default=1)
-    parser.add_argument("--ddp", action="store_true")
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--grad-clip", type=float, default=1.0)
     parser.add_argument("--warmup-iters", type=int, default=0)
     parser.add_argument("--log-interval", type=int, default=100)
     parser.add_argument("--save-interval", type=int, default=100)
-    parser.add_argument("--local-rank", type=int, default=-1)
     parser.add_argument("--hidden-size", default=512, type=int)
     parser.add_argument("--num-hidden-layers", default=8, type=int)
     parser.add_argument("--max-seq-len", default=512, type=int)
@@ -171,22 +147,11 @@ if __name__ == "__main__":
 
     args.wandb_run_name = f"TOM-Full-SFT-Epoch-{args.epochs}-BatchSize-{args.batch_size}-LearningRate-{args.learning_rate}"
 
-    ctx = nullcontext() if device_type == "cpu" else torch.cuda.amp.autocast()
-    ddp = int(os.environ.get("RANK", -1)) != -1  # is this a ddp run?
-    ddp_local_rank, DEVICE = 0, "cuda:0"
-    base_seed = 1337
+    base_seed = 2025
     torch.manual_seed(base_seed)
     torch.cuda.manual_seed(base_seed)
 
-    if ddp:
-        init_distributed_mode()
-        args.device = torch.device(DEVICE)
-        rank = dist.get_rank()
-        torch.manual_seed(base_seed + rank)
-        # 同时设置 CUDA 的随机种子
-        torch.cuda.manual_seed(base_seed + rank)
-
-    if args.use_wandb and (not ddp or ddp_local_rank == 0):
+    if args.use_wandb:
         import wandb
 
         wandb.init(project=args.wandb_project, name=args.wandb_run_name)
@@ -196,7 +161,6 @@ if __name__ == "__main__":
     model, tokenizer = init_model(lm_config)
 
     train_ds = SFTDataset(args.data_path, tokenizer, max_length=args.max_seq_len)
-    train_sampler = DistributedSampler(train_ds) if ddp else None
     train_loader = DataLoader(
         train_ds,
         batch_size=args.batch_size,
@@ -204,15 +168,10 @@ if __name__ == "__main__":
         drop_last=False,
         shuffle=False,
         num_workers=args.num_workers,
-        sampler=train_sampler,
     )
 
     scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype in ["float16", "bfloat16"]))
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
-
-    if ddp:
-        model._ddp_params_and_buffers_to_ignore = {"pos_cis"}
-        model = DistributedDataParallel(model, device_ids=[ddp_local_rank])
 
     iter_per_epoch = len(train_loader)
     for epoch in range(args.epochs):
