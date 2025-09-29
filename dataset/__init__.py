@@ -235,6 +235,30 @@ class RLAIFDataset(Dataset):
         return {"prompt": prompt, "answer": answer}
 
 
+class PretrainSampler:
+    def __init__(self, tokenizer, max_length=512):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+
+    def __call__(self, sample: dict):
+        # 构建输入文本
+        encoding = self.tokenizer(
+            str(sample["text"]),
+            max_length=self.max_length,
+            padding="max_length",
+            truncation=True,
+            return_tensors="pt",
+        )
+        input_ids = encoding.input_ids.squeeze()
+        loss_mask = input_ids != self.tokenizer.pad_token_id
+
+        X = torch.tensor(input_ids[:-1], dtype=torch.long)
+        Y = torch.tensor(input_ids[1:], dtype=torch.long)
+        loss_mask = torch.tensor(loss_mask[1:], dtype=torch.long)
+        
+        return {"X": X, "Y": Y, "loss_mask": loss_mask}    
+
 class SFTSampler:
     def __init__(self, tokenizer, max_length=1024):
         super().__init__()

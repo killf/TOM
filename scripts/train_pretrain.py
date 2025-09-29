@@ -1,8 +1,10 @@
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
+from datasets import load_dataset
 from torch import optim, nn
 import argparse
 import warnings
+import random
 import torch
 import time
 import math
@@ -12,7 +14,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from model.model_base import TOMConfig, TOMForCausalLM
-from dataset import PretrainDataset
+from dataset import PretrainSampler
 
 warnings.filterwarnings("ignore")
 
@@ -24,10 +26,10 @@ def get_lr(current_step, total_steps, lr):
 def train_epoch(epoch, wandb):
     loss_fct = nn.CrossEntropyLoss(reduction="none")
     start_time = time.time()
-    for step, (X, Y, loss_mask) in enumerate(train_loader):
-        X = X.to(args.device)
-        Y = Y.to(args.device)
-        loss_mask = loss_mask.to(args.device)
+    for step, item in enumerate(train_loader):
+        X = item["X"].to(args.device)
+        Y = item["Y"].to(args.device)
+        loss_mask = item["loss_mask"].to(args.device)
 
         lr = get_lr(
             epoch * iter_per_epoch + step,
@@ -37,10 +39,12 @@ def train_epoch(epoch, wandb):
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
-        res = model(X)
-        loss = loss_fct(res.logits.view(-1, res.logits.size(-1)), Y.view(-1)).view(
-            Y.size()
-        )
+        with torch.autocast(device_type="cuda", dtype=getattr(torch, args.dtype)):
+            res = model(X)
+            loss = loss_fct(res.logits.view(-1, res.logits.size(-1)), Y.view(-1)).view(
+                Y.size()
+            )
+
         loss = (loss * loss_mask).sum() / loss_mask.sum()
         loss += res.aux_loss
         loss = loss / args.accumulation_steps
@@ -83,7 +87,7 @@ def train_epoch(epoch, wandb):
         if (step + 1) % args.save_interval == 0:
             model.eval()
             moe_path = "_moe" if lm_config.use_moe else ""
-            ckp = f"{args.save_dir}/pretrain_{lm_config.hidden_size}{moe_path}.pth"
+            ckp = f"{args.out_dir}/pretrain_{lm_config.hidden_size}{moe_path}.pth"
 
             state_dict = model.state_dict()
             state_dict = {k: v.half() for k, v in state_dict.items()}  # 半精度保存
@@ -98,6 +102,25 @@ def init_model(lm_config):
         f"LLM训练参数量: {sum(p.numel() for p in model.parameters() if p.requires_grad) / 1e6:.3f}M"
     )
     return model, tokenizer
+
+
+def init_dataset(tokenizer):
+    train_ds = load_dataset("json", data_files=args.data_path, split="all")
+    train_ds = train_ds.map(
+        PretrainSampler(tokenizer, max_length=args.max_seq_len),
+        batched=False,
+        num_proc=os.cpu_count(),
+    )
+    train_ds.set_format(type="torch", columns=["X", "Y", "loss_mask"])
+    print(f"训练数据量: {len(train_ds) / 1024 / 1024:.2f}M 条")
+    return DataLoader(
+        train_ds,
+        batch_size=args.batch_size,
+        pin_memory=True,
+        drop_last=False,
+        shuffle=False,
+        num_workers=args.num_workers,
+    )
 
 
 if __name__ == "__main__":
@@ -124,6 +147,8 @@ if __name__ == "__main__":
     parser.add_argument("--max-seq-len", default=512, type=int)
     parser.add_argument("--use-moe", default=False, type=bool)
     parser.add_argument("--data-path", type=str, default="dataset/pretrain_hq.jsonl")
+    parser.add_argument("--seed", default=2025, type=int)
+    parser.add_argument("--use-compile", action="store_true")
     args = parser.parse_args()
 
     lm_config = TOMConfig(
@@ -131,17 +156,18 @@ if __name__ == "__main__":
         num_hidden_layers=args.num_hidden_layers,
         use_moe=args.use_moe,
     )
-    args.save_dir = os.path.join(args.out_dir)
-    os.makedirs(args.save_dir, exist_ok=True)
+
     os.makedirs(args.out_dir, exist_ok=True)
+
     tokens_per_iter = args.batch_size * args.max_seq_len
     device_type = "cuda" if "cuda" in args.device else "cpu"
 
     args.wandb_run_name = f"TOM-Pretrain-Epoch-{args.epochs}-BatchSize-{args.batch_size}-LearningRate-{args.learning_rate}"
 
-    base_seed = 2025
-    torch.manual_seed(base_seed)
-    torch.cuda.manual_seed(base_seed)
+    if args.seed > 0:
+        random.seed(args.seed)
+        torch.manual_seed(args.seed)
+        torch.cuda.manual_seed(args.seed)
 
     if args.use_wandb:
         import wandb
@@ -151,17 +177,12 @@ if __name__ == "__main__":
         wandb = None
 
     model, tokenizer = init_model(lm_config)
-    train_ds = PretrainDataset(args.data_path, tokenizer, max_length=args.max_seq_len)
-    train_loader = DataLoader(
-        train_ds,
-        batch_size=args.batch_size,
-        pin_memory=True,
-        drop_last=False,
-        shuffle=False,
-        num_workers=args.num_workers,
-    )
+    if args.use_compile and "cuda" in args.device:
+        model.model = torch.compile(model.model)
 
-    scaler = torch.cuda.amp.GradScaler(enabled=(args.dtype in ["float16", "bfloat16"]))
+    train_loader = init_dataset(tokenizer)
+
+    scaler = torch.amp.GradScaler(enabled=(args.dtype in ["float16", "bfloat16"]))
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
 
     iter_per_epoch = len(train_loader)
