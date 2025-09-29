@@ -1,2 +1,4 @@
 tokenizers
+flash-attn
+datasets
 torch
