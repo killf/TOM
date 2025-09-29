@@ -39,7 +39,7 @@ def train_epoch(epoch, wandb):
         for param_group in optimizer.param_groups:
             param_group["lr"] = lr
 
-        with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
+        with torch.autocast(device_type="cuda", dtype=getattr(torch, args.dtype)):
             res = model(X)
             loss = loss_fct(res.logits.view(-1, res.logits.size(-1)), Y.view(-1)).view(
                 Y.size()
@@ -82,10 +82,7 @@ def train_epoch(epoch, wandb):
             model.eval()
             moe_path = "_moe" if lm_config.use_moe else ""
             ckp = f"{args.out_dir}/full_sft_{lm_config.hidden_size}{moe_path}.pth"
-            if isinstance(model, torch.nn.parallel.DistributedDataParallel):
-                state_dict = model.module.state_dict()
-            else:
-                state_dict = model.state_dict()
+            state_dict = model.state_dict()
             state_dict = {k: v.half() for k, v in state_dict.items()}  # 半精度保存
             torch.save(state_dict, ckp)
             model.train()
@@ -114,7 +111,7 @@ def init_dataset(tokenizer):
         num_proc=os.cpu_count(),
     )
     train_ds.set_format(type="torch", columns=["X", "Y", "loss_mask"])
-    print(f"训练数据量: {len(train_ds) / 1024 / 1024:.2f}M 条")
+    print(f"训练数据量: {len(train_ds) / 1024 / 1024:.2f}M")
     return DataLoader(
         train_ds,
         batch_size=args.batch_size,

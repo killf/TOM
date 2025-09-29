@@ -112,7 +112,7 @@ def init_dataset(tokenizer):
         num_proc=os.cpu_count(),
     )
     train_ds.set_format(type="torch", columns=["X", "Y", "loss_mask"])
-    print(f"训练数据量: {len(train_ds) / 1024 / 1024:.2f}M 条")
+    print(f"训练数据量: {len(train_ds) / 1024 / 1024:.2f}M")
     return DataLoader(
         train_ds,
         batch_size=args.batch_size,
