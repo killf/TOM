@@ -1,6 +1,7 @@
 from torch.utils.data import DataLoader
 from transformers import AutoTokenizer
 from datasets import load_dataset
+from datetime import datetime
 from torch import optim, nn
 import argparse
 import warnings
@@ -14,7 +15,7 @@ import sys
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from model.model_base import TOMConfig, TOMForCausalLM
-from dataset import PretrainSampler
+from dataset import PretrainSampler, PretrainDataset
 
 warnings.filterwarnings("ignore")
 
@@ -90,7 +91,7 @@ def train_epoch(epoch, wandb):
             ckp = f"{args.out_dir}/pretrain_{lm_config.hidden_size}{moe_path}.pth"
 
             state_dict = model.state_dict()
-            state_dict = {k: v.half() for k, v in state_dict.items()}  # 半精度保存
+            state_dict = {k.replace("model._orig_mod.", "model."): v.half() for k, v in state_dict.items()}  # 半精度保存
             torch.save(state_dict, ckp)
             model.train()
 
@@ -186,5 +187,7 @@ if __name__ == "__main__":
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
 
     iter_per_epoch = len(train_loader)
+    print(f"开始训练时间: {datetime.now()}")
     for epoch in range(args.epochs):
         train_epoch(epoch, wandb)
+    print(f"结束训练时间: {datetime.now()}")

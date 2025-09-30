@@ -83,7 +83,7 @@ def train_epoch(epoch, wandb):
             moe_path = "_moe" if lm_config.use_moe else ""
             ckp = f"{args.out_dir}/full_sft_{lm_config.hidden_size}{moe_path}.pth"
             state_dict = model.state_dict()
-            state_dict = {k: v.half() for k, v in state_dict.items()}  # 半精度保存
+            state_dict = {k.replace("model._orig_mod.", "model."): v.half() for k, v in state_dict.items()}  # 半精度保存
             torch.save(state_dict, ckp)
             model.train()
 
@@ -172,7 +172,7 @@ if __name__ == "__main__":
     )
 
     model, tokenizer = init_model(lm_config)    
-    if args.use_compile and "cuda" in args.device:
+    if args.use_compile:
         model.model = torch.compile(model.model)
 
     optimizer = optim.AdamW(model.parameters(), lr=args.learning_rate)
