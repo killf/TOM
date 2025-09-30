@@ -169,7 +169,7 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-output
+output*
 test
 
 dataset/*.jsonl
